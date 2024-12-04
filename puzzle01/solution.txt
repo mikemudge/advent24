@@ -1,0 +1,35 @@
+# Written in my own language
+
+String[] data = readfile("puzzle01/input")
+
+int i = 0;
+array lhs = [];
+array rhs = [];
+while i < count(data) {
+  string s = data[i];
+#  print(i, s);
+  array v = s.split("   ");
+  lhs.push(v[0]);
+  rhs.push(v[1]);
+  i = i + 1;
+}
+
+lhs.sort()
+rhs.sort()
+
+x = count(lhs);
+print(x);
+int totalSum = 0;
+int i = 0;
+while i < count(lhs) {
+  int diff = abs(lhs[i] - rhs[i])
+#  print(i, lhs[i], rhs[i], diff, totalSum);
+  totalSum = totalSum + diff
+  i = i + 1;
+}
+
+# 54459432 was too high.
+print("part1", totalSum);
+
+# 341788 was too low.
+# 1151792 was right for part1
