@@ -17,6 +17,10 @@ class ArrayExpression implements Expression {
         $arr = $context->getVar($this->var);
         $index = $this->index->calculate($context);
         $count = count($arr);
+        if (is_string($index)) {
+            // Map lookup doesn't get out of bounds?
+            return $arr[$index];
+        }
         if ($index >= $count) {
             throw new \OutOfBoundsException("$index is not in range of array $this->var with $count items");
         }
@@ -24,6 +28,6 @@ class ArrayExpression implements Expression {
     }
 
     public function __toString(): string {
-        return "$this->var";
+        return "$this->var[$this->index]";
     }
 }

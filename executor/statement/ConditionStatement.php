@@ -21,6 +21,8 @@ class ConditionStatement extends BlockStatement {
     }
 
     public function printDebug(string $prefix) {
+        $cls = get_class($this);
+        echo("$prefix$cls\n");
         echo("$prefix$this\n");
         foreach($this->getStatements() as $statement) {
             $statement->printDebug("$prefix  ");

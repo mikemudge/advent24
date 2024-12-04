@@ -4,10 +4,12 @@ use expression\ArrayExpression;
 use expression\ArrayValue;
 use expression\BooleanExpression;
 use expression\FloatValue;
+use expression\InExpression;
 use expression\IntValue;
 use expression\MathExpression;
 use expression\StringValue;
 use expression\VarExpression;
+use statement\ArrayAssignmentStatement;
 use statement\AssignmentStatement;
 use statement\BlockStatement;
 use statement\ConditionStatement;
@@ -97,7 +99,15 @@ class Parser {
         }
         if ($operator == "=") {
             $expression = $this->parseExpression($remaining);
-            return new AssignmentStatement($variable, $expression);
+
+            // Check for assigning to an array variable.
+            $parts = explode("[", $variable);
+            if (count($parts) == 1) {
+                return new AssignmentStatement($variable, $expression);
+            }
+            // Remove trailing ]
+            $index = $this->parseExpression(substr($parts[1], 0, -1));
+            return new ArrayAssignmentStatement($parts[0], $index, $expression);
         } else {
             throw new RuntimeException("Unknown statement $line");
         }
@@ -107,8 +117,8 @@ class Parser {
         if (count($tokens) < 3) {
             throw new RuntimeException("Not enough tokens for a conditional");
         }
-        $lhs = $tokens[1];
-        $rhs = $tokens[3];
+        $lhs = $this->parseExpression($tokens[1]);
+        $rhs = $this->parseExpression($tokens[3]);
         $compare = $tokens[2];
         $condition = new BooleanExpression($lhs, $rhs, $compare);
         return new ConditionStatement($condition);

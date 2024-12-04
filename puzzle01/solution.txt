@@ -33,3 +33,36 @@ print("part1", totalSum);
 
 # 341788 was too low.
 # 1151792 was right for part1
+
+array freq = [];
+int i = 0;
+while i < count(rhs) {
+  x = rhs[i];
+  x = toString(x);
+  freq[x] = 0;
+  i = i + 1
+}
+
+int i = 0;
+while i < count(rhs) {
+  x = rhs[i];
+  x = toString(x);
+  freq[x] = freq[x] + 1;
+  i = i + 1;
+}
+
+
+int part2 = 0
+i = 0
+while i < count(lhs) {
+  x = lhs[i];
+  int f = 0;
+  if x in freq {
+    f = freq[x];
+  }
+  int similarity = f * x;
+  part2 = part2 + similarity
+  i = i + 1;
+}
+
+print("part2", part2);

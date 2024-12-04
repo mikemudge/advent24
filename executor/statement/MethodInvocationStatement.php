@@ -44,6 +44,10 @@ class MethodInvocationStatement extends Statement implements Expression {
             return count($evaluatedArgs[0]);
         }
 
+        if ($this->methodName == "toString") {
+            return strval($evaluatedArgs[0]);
+        }
+
         if ($this->methodName == "abs") {
             return abs($evaluatedArgs[0]);
         }
@@ -51,13 +55,9 @@ class MethodInvocationStatement extends Statement implements Expression {
         if (!$this->targetObject) {
             throw new \RuntimeException("Target was not provided for method call $this->methodName");
         }
-
-        // Methods below here require a target object.
-        $obj = $this->targetObject->calculate($context);
-
         if ($this->methodName == "sort") {
+            $obj = &$this->targetObject->calculate($context);
             sort($obj);
-            $context->setVar($this->targetObject->getVar(), $obj);
             return $obj;
         }
         if ($this->methodName == "split") {
@@ -65,6 +65,7 @@ class MethodInvocationStatement extends Statement implements Expression {
             if (!$evaluatedArgs[0]) {
                 throw new \RuntimeException("Method split had a null arg");
             }
+            $obj = &$this->targetObject->calculate($context);
             return explode($separator, $obj);
         }
         if (count($evaluatedArgs) != 1) {
@@ -72,13 +73,13 @@ class MethodInvocationStatement extends Statement implements Expression {
         }
         if ($this->methodName == "push") {
             // How to push to array which is referenced as a var?
-            $array = $this->targetObject->calculate($context);
+            $array = &$this->targetObject->calculate($context);
             $array[] = $evaluatedArgs[0];
-            $context->setVar($this->targetObject->getVar(), $array);
-            // TODO set array in vars again?
             return $array;
         }
 
+        // A catch all which will call any php function
+        $obj = &$this->targetObject->calculate($context);
         return call_user_func([$obj, $this->methodName]);
     }
 

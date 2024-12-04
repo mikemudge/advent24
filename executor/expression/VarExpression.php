@@ -11,11 +11,7 @@ class VarExpression implements Expression {
         $this->var = $var;
     }
 
-    public function getVar() {
-        return $this->var;
-    }
-
-    public function calculate(\ProgramContext $context): mixed {
+    public function &calculate(\ProgramContext $context): mixed {
         return $context->getVar($this->var);
     }
 

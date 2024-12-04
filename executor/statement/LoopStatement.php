@@ -20,11 +20,13 @@ class LoopStatement extends BlockStatement {
     }
 
     public function printDebug(string $prefix): void {
+        $cls = get_class($this);
+        echo("$prefix$cls\n");
         echo("$prefix$this\n");
         foreach($this->getStatements() as $statement) {
             $statement->printDebug("$prefix  ");
         }
-        echo"$prefix}";
+        echo"$prefix}\n";
     }
 
     public function __toString(): string {
