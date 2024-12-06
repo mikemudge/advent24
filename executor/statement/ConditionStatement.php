@@ -22,12 +22,11 @@ class ConditionStatement extends BlockStatement {
 
     public function printDebug(string $prefix) {
         $cls = get_class($this);
-        echo("$prefix$cls\n");
-        echo("$prefix$this\n");
+        echo("$prefix$this ($cls)\n");
         foreach($this->getStatements() as $statement) {
             $statement->printDebug("$prefix  ");
         }
-        echo"$prefix}";
+        echo"$prefix}\n";
     }
     public function __toString(): string {
         return "if $this->condition {";

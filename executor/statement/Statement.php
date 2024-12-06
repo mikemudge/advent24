@@ -9,8 +9,7 @@ abstract class Statement {
 
     public function printDebug(string $prefix) {
         $cls = get_class($this);
-        echo("$prefix$cls\n");
-        echo("$prefix$this\n");
+        echo("$prefix$this ($cls)\n");
     }
 
 }

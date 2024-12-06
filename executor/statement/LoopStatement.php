@@ -21,8 +21,7 @@ class LoopStatement extends BlockStatement {
 
     public function printDebug(string $prefix): void {
         $cls = get_class($this);
-        echo("$prefix$cls\n");
-        echo("$prefix$this\n");
+        echo("$prefix$this ($cls)\n");
         foreach($this->getStatements() as $statement) {
             $statement->printDebug("$prefix  ");
         }

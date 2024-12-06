@@ -165,28 +165,64 @@ class Parser {
         }
 
         // It could be mathematical (E.g x + 1)
+        // TODO here we should find an expression greedily.
+        // E.g x + 1 would find "x"
+        // Then we check if there is more after that expression and create more complex expressions.
 
-        if (count($tokens) == 3) {
-            $lhs = $this->parseExpression($tokens[0]);
-            $rhs = $this->parseExpression($tokens[2]);
-            if (in_array($tokens[1], ["+", "-", "*", "/"])) {
-                return new MathExpression($lhs, $rhs, $tokens[1]);
+        // If we are here it must be a var or array access.
+        $varName = [];
+        $chars = str_split($line);
+        foreach ($chars as $c) {
+            if (ctype_alnum($c)) {
+                $varName[] = $c;
+            } else {
+                break;
             }
+        }
+        if ($c == "]") {
+            // We reached the end of an array index, return what we have.
+            return $this->parseExpression(join("", $varName));
+        }
+        if ($c == "[") {
+            // We hit an array lookup, get the index so we can return an array expression.
+            [, $rest] = explode("[", $line, 2);
+            $index = $this->parseExpression($rest);
+            // Expect an ] after this?
+            $firstPart = new ArrayExpression(join("", $varName), $index);
+            // we need to consume everything which made up index now.
+            // E.g v[ii - 1] is multiple tokens, but our call to parseExpression consumed them.
+            // TODO This will not support nested array lookups.
+            [, $rest] = explode("]", $line, 2);
+            $rest = trim($rest);
+            if (empty($rest)) {
+                return $firstPart;
+            }
+            $remainingTokens = explode(" ", $rest);
         } else {
-            // It might be an array variable access (E.g arr[i]).
-            // Or just a regular variable (E.g foo)
-            $parts = explode("[", $line);
-            if (count($parts) == 1) {
-                return new VarExpression($line);
-                // array reference.
+            // Otherwise we just found a var.
+            $firstPart = new VarExpression(join("", $varName));
+            if (count($tokens) == 1) {
+                return $firstPart;
             }
-            // Remove trailing ]
-            $index = $this->parseExpression(substr($parts[1], 0, -1));
-            return new ArrayExpression($parts[0], $index);
+            $remainingTokens = array_splice($tokens, 1);
         }
 
-        // TODO handle multi token expressions?
-        throw new RuntimeException("Unable to parse expression $line");
+        // Check for mathematical expression like "x - 1" rather than just "x"
+        // Check number of tokens to see.
+
+        $op = $remainingTokens[0];
+        $remaining = join(" ", array_splice($remainingTokens, 1));
+
+        // If there are more tokens, see what operator we have to deal with.
+        if (in_array($op, ["+", "-", "*", "/"])) {
+            $lhs = $firstPart;
+            // Parse the rest.
+            $rhs = $this->parseExpression($remaining);
+            return new MathExpression($lhs, $rhs, $op);
+        } else {
+            // We found an expression (firstPart) but don't know what to do with the rest of this line.
+            throw new RuntimeException("unexpected $op in $line");
+        }
     }
 
     public function handleMethodInvocation(string $line) {
