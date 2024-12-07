@@ -3,14 +3,13 @@ String[] data = readfile("puzzle02/input")
 
 int i = 0;
 int part1 = 0;
+int part2 = 0
 while i < count(data) {
   string s = data[i];
   array v = s.split(" ");
   int fail = 0;
   int increase = 0;
   diff = v[1] - v[0];
-  #print(i, diff);
-# 87 85 83 82 79
   if diff > 0 {
     increase = 1
   }
@@ -18,29 +17,45 @@ while i < count(data) {
     increase = -1
   }
   int ii = 1;
+  last = v[0];
   while ii < count(v) {
-    diff = v[ii] - v[ii - 1];
-    if diff > 0 {
-      if increase == -1 {
-        #print(i, ii, diff, "decreases");
-        fail = 1
+    diff = v[ii] - last;
+    prev = v[ii];
+    if diff > 0 && diff < 4 && increase == -1 {
+      print(i, ii, diff, "not-decreasing");
+      fail = fail + 1
+      if ii != 1 {
+        prev = last
       }
     }
     if diff < 0 {
-      if increase == 1 {
-        #print(i, ii, diff, "increases");
-        fail = 1
+      if diff > -4 {
+        if increase == 1 {
+          print(i, ii, diff, "not-increasing");
+          fail = fail + 1
+          if ii != 1 {
+            prev = last
+          }
+        }
       }
     }
     if diff == 0 {
-      #print(i, ii, "ZeroDiff")
-      fail = 1
+      print(i, ii, "ZeroDiff")
+      fail = fail + 1
+      if ii != 1 {
+        prev = last
+      }
     }
     if abs(diff) > 3 {
-      #print(i, ii, diff, "LargeDiff")
-      fail = 1
+      print(i, ii, diff, "LargeDiff")
+      fail = fail + 1
+      if ii != 1 {
+        prev = last
+      }
     }
-    if fail == 1 {
+    # update the last to be the previous value.
+    last = prev
+    if fail >= 2 {
       # Skip to the end of this loop
       ii = count(v)
     }
@@ -50,12 +65,21 @@ while i < count(data) {
     #print(i, "Success")
     part1 = part1 + 1
   }
+  if fail < 2 {
+    part2 = part2 + 1
+  }
+  print(i, fail, part1, part2)
   i = i + 1;
+  if i > 10 {
+    i = 1000
+  }
 }
 
 # 610 is too high
+# 606 was right.
 print("part1", part1);
 
-int part2 = 0
-
+# 643 is too low
+# 645 is too high
+# 644 is right. Not currently getting this?
 print("part2", part2);

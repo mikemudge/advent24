@@ -6,12 +6,12 @@ use expression\VarExpression;
 use ProgramContext;
 
 class MethodInvocationStatement extends Statement implements Expression {
-    private ?VarExpression $targetObject;
+    private ?Expression $targetObject;
     private string $methodName;
     /** @var Expression[] */
     private array $args;
 
-    public function __construct(?VarExpression $targetObject, string $methodName, array $args) {
+    public function __construct(?Expression $targetObject, string $methodName, array $args) {
         $this->targetObject = $targetObject;
         $this->methodName = $methodName;
         $this->args = $args;

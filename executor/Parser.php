@@ -3,12 +3,16 @@
 use expression\ArrayExpression;
 use expression\ArrayValue;
 use expression\BooleanExpression;
+use expression\BooleanValue;
+use expression\Expression;
 use expression\FloatValue;
 use expression\InExpression;
 use expression\IntValue;
 use expression\MathExpression;
 use expression\StringValue;
 use expression\VarExpression;
+use parser\Line;
+use parser\ParserException;
 use statement\ArrayAssignmentStatement;
 use statement\AssignmentStatement;
 use statement\BlockStatement;
@@ -32,231 +36,287 @@ class Parser {
         $root = new BlockStatement();
         $this->currentBlock = $root;
         $this->stack[] = $root;
-        foreach($lines as $line) {
-            $line = trim($line);
-            if ($line && !str_starts_with($line, "#")) {
-                // Only parse lines which aren't empty, and aren't comments.
+        foreach($lines as $i => $line) {
+            $line = new Line($line, $i);
+            // Only parse lines which aren't empty, and aren't comments.
+            if ($line->isComment() || $line->isEmpty()) {
+                continue;
+            }
+            try {
                 $this->parseStatement($line);
+            } catch (Throwable $t) {
+                echo("Error parsing line $line\n");
+                throw $t;
             }
         }
         // Check that the stack was successfully emptied?
         return $root->getStatements();
     }
 
-    public function parseStatement($line) {
+    public function parseStatement(Line $line) {
         // Remove any semicolon from the end of the line.
-        $line = trim($line,";");
+//        $line = trim($line,";");
 
-        $tokens = explode(" ", $line);
+        $firstToken = $line->getNextToken();
 
-        switch ($tokens[0]) {
+        switch ($firstToken) {
             case '}':
                 // End block
                 $this->currentBlock = array_pop($this->stack);
                 return;
             case 'while':
                 // loop stuff;
-                $loop = $this->handleLoop($tokens);
-                $this->currentBlock->append($loop);
-                // Put the current block aside as we want to build the loop now.
-                $this->stack[] = $this->currentBlock;
-                $this->currentBlock = $loop;
+                $condition = $this->parseBooleanExpression($line);
+                $this->nestedBlock(new LoopStatement($condition));
                 return;
             case 'if':
                 // Conditional stuff.
-                $conditional = $this->handleConditional($tokens);
-                $this->currentBlock->append($conditional);
-                // Put the current block aside as we want to build the loop now.
-                $this->stack[] = $this->currentBlock;
-                $this->currentBlock = $conditional;
+                $condition = $this->parseBooleanExpression($line);
+                $this->nestedBlock(new ConditionStatement($condition));
                 return;
             default:
                 // Handle other statements.
-                $statement = $this->handleStatement($line);
+                $statement = $this->handleStatement($firstToken, $line);
                 $this->currentBlock->append($statement);
         }
     }
 
-    private function handleStatement(string $line) {
-
-        // TODO check if tokens[0] is a type definition?
-        $tokens = explode(" ", $line);
-        if (str_contains($tokens[0], "(")) {
-            // Probably a method call?
-            return $this->handleMethodInvocation($line);
-        }
-        $operators = ["="];
-        if (in_array($tokens[1], $operators)) {
-            $variable = $tokens[0];
-            $operator = $tokens[1];
-            $remaining = join(" ", array_splice($tokens, 2));
-        } else if (in_array($tokens[2], $operators)) {
-            $variable = $tokens[1];
-            $operator = $tokens[2];
-            $remaining = join(" ", array_splice($tokens, 3));
-        } else {
-            throw new RuntimeException("Unknown operator $line");
-        }
-        if ($operator == "=") {
-            $expression = $this->parseExpression($remaining);
-
-            // Check for assigning to an array variable.
-            $parts = explode("[", $variable);
-            if (count($parts) == 1) {
-                return new AssignmentStatement($variable, $expression);
-            }
-            // Remove trailing ]
-            $index = $this->parseExpression(substr($parts[1], 0, -1));
-            return new ArrayAssignmentStatement($parts[0], $index, $expression);
-        } else {
-            throw new RuntimeException("Unknown statement $line");
-        }
-    }
-
-    private function handleConditional(array $tokens): ConditionStatement {
-        if (count($tokens) < 3) {
-            throw new RuntimeException("Not enough tokens for a conditional");
-        }
-        $lhs = $this->parseExpression($tokens[1]);
-        $rhs = $this->parseExpression($tokens[3]);
-        $compare = $tokens[2];
-        $condition = new BooleanExpression($lhs, $rhs, $compare);
-        return new ConditionStatement($condition);
-    }
-
-    private function handleLoop(array $tokens): BlockStatement {
-        // while i < count(data) {
-        if (count($tokens) < 3) {
-            throw new RuntimeException("Not enough tokens for a loop" . join($tokens));
-        }
-        // parse the current line to determine the entry criteria etc.
-        $lhs = $this->parseExpression($tokens[1]);
-        $rhs = $this->parseExpression($tokens[3]);
-        $compare = $tokens[2];
-        $condition = new BooleanExpression($lhs, $rhs, $compare);
-        return new LoopStatement($condition);
-    }
-
-    private function parseExpression(string $line) {
-        $tokens = explode(" ", $line);
-
-        // TODO need a better way to detect methods.
-        // ( can be used in math expressions as well.
-        if (str_contains($tokens[0], "(")) {
-            // Probably a method call?
-            return $this->handleMethodInvocation($line);
+    private function handleStatement(string $firstToken, Line $line) {
+        $next = $line->getCurrentChar();
+        if (ctype_alnum($next)) {
+            // The first token may be a type def if the second token begins with an alpha numeric char.
+            $type = $firstToken;
+            $firstToken = $line->getNextToken();
+            $next = $line->getCurrentChar();
         }
 
-        if (str_starts_with($line, "[")) {
-            // Assume its an array value.
-            // TODO support a non empty array.
-            return new ArrayValue();
-        }
-        if (str_starts_with($line, "\"")) {
-            // Assume its a string value.
-            return new StringValue(substr($line, 1, -1));
-        }
-        if (is_numeric($line)) {
-            if (is_int($line)) {
-                return new IntValue($line);
+        // Check for an array variable being assigned to.
+        if ($next == "[") {
+            // TODO types can also be arrays like String[]
+            $line->consumeChar();
+            $next = $line->getCurrentChar();
+            if ($next == "]") {
+                $line->consumeChar();
+                // Its an X[] which implies this is a type.
+                $type = "array of $firstToken";
+                $firstToken = $line->getNextToken();
+                $next = $line->getCurrentChar();
             } else {
-                return new FloatValue((float)$line);
+                // should be an array assignment, but we haven't seen the equals yet?
+                // A simple array access doesn't do anything as a statement?
+                // something like x[i] = ...
+                $index = $this->arrayIndex($line);
+                $next = $line->getCurrentChar();
+
+                if ($next == "=") {
+                    $line->consumeChar();
+                    $expression = $this->parseExpression($line);
+                    return new ArrayAssignmentStatement($firstToken, $index, $expression);
+                }
             }
         }
 
-        // It could be mathematical (E.g x + 1)
-        // TODO here we should find an expression greedily.
-        // E.g x + 1 would find "x"
-        // Then we check if there is more after that expression and create more complex expressions.
-
-        // If we are here it must be a var or array access.
-        $varName = [];
-        $chars = str_split($line);
-        foreach ($chars as $c) {
-            if (ctype_alnum($c)) {
-                $varName[] = $c;
-            } else {
-                break;
-            }
-        }
-        if ($c == "]") {
-            // We reached the end of an array index, return what we have.
-            return $this->parseExpression(join("", $varName));
-        }
-        if ($c == "[") {
-            // We hit an array lookup, get the index so we can return an array expression.
-            [, $rest] = explode("[", $line, 2);
-            $index = $this->parseExpression($rest);
-            // Expect an ] after this?
-            $firstPart = new ArrayExpression(join("", $varName), $index);
-            // we need to consume everything which made up index now.
-            // E.g v[ii - 1] is multiple tokens, but our call to parseExpression consumed them.
-            // TODO This will not support nested array lookups.
-            [, $rest] = explode("]", $line, 2);
-            $rest = trim($rest);
-            if (empty($rest)) {
-                return $firstPart;
-            }
-            $remainingTokens = explode(" ", $rest);
-        } else {
-            // Otherwise we just found a var.
-            $firstPart = new VarExpression(join("", $varName));
-            if (count($tokens) == 1) {
-                return $firstPart;
-            }
-            $remainingTokens = array_splice($tokens, 1);
+        // Then check that this is actually an assignment.
+        if ($next == "=") {
+            $line->consumeChar();
+            $expression = $this->parseExpression($line);
+            return new AssignmentStatement($firstToken, $expression);
         }
 
-        // Check for mathematical expression like "x - 1" rather than just "x"
-        // Check number of tokens to see.
-
-        $op = $remainingTokens[0];
-        $remaining = join(" ", array_splice($remainingTokens, 1));
-
-        // If there are more tokens, see what operator we have to deal with.
-        if (in_array($op, ["+", "-", "*", "/"])) {
-            $lhs = $firstPart;
-            // Parse the rest.
-            $rhs = $this->parseExpression($remaining);
-            return new MathExpression($lhs, $rhs, $op);
-        } else {
-            // We found an expression (firstPart) but don't know what to do with the rest of this line.
-            throw new RuntimeException("unexpected $op in $line");
-        }
+        // Otherwise we need to check for method calls which are an expression.
+        // Those handle things like referencing a method on an array or another target object.
+        return $this->parseStatementExpression($firstToken, $line);
     }
 
-    public function handleMethodInvocation(string $line) {
-        $name = explode("(", $line);
-        // Some methods will have a part of the params in the first token.
-        // E.g x.call(4);
-        $methodName = $name[0];
-        $parts = explode(".", $methodName);
-        if (count($parts) == 1) {
-            // A straight call to a method.
-            // call()
+    private function parseBooleanExpression(Line $line): BooleanExpression {
+        $lhs = $this->parseExpression($line);
+
+        // TODO a boolean variable alone should be considered acceptable here too?
+
+        // TODO better reading for a comparator?
+        $compare = $line->getCurrentChar();
+        $line->consumeChar();
+        $compare2 = $line->getCurrentChar();
+        if ($compare2 == "=") {
+            // <= >= == !=
+            $compare .= $compare2;
+            $line->consumeChar();
+        }
+
+        $rhs = $this->parseExpression($line);
+        return new BooleanExpression($lhs, $rhs, $compare);
+    }
+
+    private function parseExpression(Line $line): Expression {
+
+        $target = $this->parseValue($line);
+
+        // After a first value is parsed we need to check for continuations.
+        return $this->greedyExpression($target, $line);
+    }
+
+    private function nestedBlock(BlockStatement $block): void {
+        $this->currentBlock->append($block);
+        // Put the current block aside as we want to build the new block now.
+        $this->stack[] = $this->currentBlock;
+        $this->currentBlock = $block;
+    }
+
+    private function arrayIndex(Line $line) {
+        // Read the array index expression.
+        $index = $this->parseExpression($line);
+        $closeBracket = $line->getCurrentChar();
+        if ($closeBracket != "]") {
+            throw new ParserException("Array access didn't end with ]" , $line);
+        }
+        // Use up the ]
+        $line->consumeChar();
+        return $index;
+    }
+
+    /**
+     * parse an expression which can be used as a statement.
+     * Can this be anything other than a method call?
+     * The target of the call could be complex though.
+     * E.g x.call(), a[i].call(), a.one().two()
+     */
+    private function parseStatementExpression(string $firstToken, Line $line): MethodInvocationStatement {
+        // Default to just be a var.
+        $expr = new VarExpression($firstToken);
+
+        $next = $line->getCurrentChar();
+        if ($next == "(") {
+            // Appears to be a method call
             $targetObject = null;
-        } else {
-            // A call on another target
-            // x.call()
-            $targetObject = $this->parseExpression($parts[0]);
-            $methodName = $parts[1];
+            $methodName = $firstToken;
+            $line->consumeChar();
+            $args = $this->parseArguments($line);
+            $expr = new MethodInvocationStatement($targetObject, $methodName, $args);
+        } else if ($next == ".") {
+            // Handle an access on $firstToken.
+            $expr = $this->parseMethodCallOn($expr, $line);
+        } else if ($next == "[") {
+            $index = $this->arrayIndex($line);
+            $expr = new ArrayExpression($firstToken, $index);
+            // TODO an array expression is not a valid statement?
+            // however there may be a method call on it?
         }
+
+        return $expr;
+    }
+
+    /**
+     * After parsing an existing expression, we need to check if its continued somehow.
+     * E.g x + 1, x.call(), x[i] etc.
+     */
+    private function greedyExpression(Expression $expr, Line $line): Expression {
+        // can we use parseStatementExpression to get method invocations?
+        if ($line->isComplete()) {
+            return $expr;
+        }
+        $next = $line->getCurrentChar();
+        if ($next == ")" || $next == "]" || $next == ",") {
+            // method arguments or array index accesses end with these.
+            // A nested call (x + 1) * 2 would also have the lhs end with the )
+            // TODO need to handle starting a nested expression with (
+            return $expr;
+        }
+        if ($next == ".") {
+            $expr = $this->parseMethodCallOn($expr, $line);
+        } else if ($next == "[") {
+            $line->consumeChar();
+            $index = $this->arrayIndex($line);
+            $expr = new ArrayExpression($expr, $index);
+        } else if (in_array($next, ["+", "-", "*", "/"])) {
+            // Consume the operation.
+            $line->consumeChar();
+            $rhs = $this->parseExpression($line);
+            $expr = new MathExpression($expr, $rhs, $next);
+        } else {
+            // No known continuations
+            throw new ParserException("Not sure what to do with $next", $line);
+        }
+
+        // Recursively find more things.
+        return $this->greedyExpression($expr, $line);
+    }
+
+    private function parseArguments(Line $line): array {
         $args = [];
+        $cur = $line->getCurrentChar();
+        if ($cur == ")") {
+            return $args;
+        }
 
-        // Remove the methodName, just get the rest
-        // Remove the last ) and everything after it to find the params for this method.
-        // TODO this could be improved upon.
-        $openBracketIndex = strpos($line, "(");
-        $endParamIndex = strrpos($line, ")");
-        $paramsString = substr($line, $openBracketIndex + 1, $endParamIndex - $openBracketIndex - 1);
+        $args[] = $this->parseExpression($line);
+        while($line->getCurrentChar() == ",") {
+            $line->consumeChar();
+            $args[] = $this->parseExpression($line);
+        }
+        // Should end with a )
+        if ($line->getCurrentChar() != ")") {
+            throw new ParserException("Unexpected $cur after method args, expecting , or )", $line);
+        }
+        $line->consumeChar();
+        return $args;
+    }
 
-        // Ignore empty string for things like call() has no params.
-        if (!empty($paramsString)) {
-            $params = explode(",", $paramsString);
-            foreach ($params as $p) {
-                $args[] = $this->parseExpression(trim($p));
+    /**
+     * Parse a value/expression in a non greedy way
+     * Can be a constant primitive, a variable or a method call.
+     */
+    private function parseValue(Line $line): Expression {
+        // Check for constant values, string, int bool etc first.
+        $cur = $line->getCurrentChar();
+        if ($cur == "\"") {
+            $line->consumeChar();
+            $string = $line->readUntil("\"");
+            // Consume the trailing " and return
+            $line->consumeChar();
+            return new StringValue($string);
+        }
+        echo("parseValue got a $cur\n");
+        $firstToken = $line->getNextToken();
+        if (ctype_digit($cur)) {
+            // Looks like a numeric value
+            if (is_int($firstToken)) {
+                return new IntValue($firstToken);
+            } else {
+                return new FloatValue((float) $firstToken);
             }
         }
-        return new MethodInvocationStatement($targetObject, $methodName, $args);
+
+        if ($firstToken == "true" || $firstToken == "false") {
+            return new BooleanValue($firstToken == "true");
+        }
+
+        // Handle method calls and array accesses.
+        $next = $line->getCurrentChar();
+        if ($next == "(") {
+            // Appears to be a method call
+            $targetObject = null;
+            $methodName = $firstToken;
+            $line->consumeChar();
+            $args = $this->parseArguments($line);
+            return new MethodInvocationStatement($targetObject, $methodName, $args);
+        }
+
+        return new VarExpression($firstToken);
+    }
+
+    private function parseMethodCallOn(Expression $target, Line $line): MethodInvocationStatement {
+        // consume the .
+        $line->consumeChar();
+        $methodName = $line->getNextToken();
+
+        if ($line->getCurrentChar() != "(") {
+            // Can't access properties of a target
+            // Anything else this could be, it starts with x.y?
+            throw new ParserException("Expecting method call $methodName on $target", $line);
+        }
+        $line->consumeChar();
+
+        $args = $this->parseArguments($line);
+        return new MethodInvocationStatement($target, $methodName, $args);
     }
 }
