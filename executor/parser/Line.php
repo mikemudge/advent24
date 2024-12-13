@@ -1,8 +1,6 @@
 <?php
 namespace parser;
 
-use RuntimeException;
-
 class Line {
 
     private int $index;
@@ -37,7 +35,6 @@ class Line {
 
     public function consumeChar() {
         $this->index++;
-        $this->consumeWhitespace();
     }
 
     public function isComplete(): bool {
@@ -46,7 +43,17 @@ class Line {
 
     public function getCurrentChar() {
         $this->consumeWhitespace();
+        if ($this->isComplete()) {
+            throw new ParserException("EOL reached", $this);
+        }
         return $this->line[$this->index];
+    }
+
+    public function expectChar(string $char) {
+        if ($this->getCurrentChar() != $char) {
+            throw new ParserException("Expecting $char", $this);
+        }
+        $this->consumeChar();
     }
 
     public function readUntil(string $string): string {
@@ -61,17 +68,45 @@ class Line {
         throw new ParserException("No $string was found", $this);
     }
 
+    public function consumeSymbol(): string {
+        $this->consumeWhitespace();
+
+        $start = $this->index;
+
+        while($this->index < $this->length) {
+            $cur = $this->line[$this->index];
+            // alphanumeric chars are not symbols.
+            if (ctype_alnum($cur)) {
+                break;
+            }
+            if ($cur == ";") {
+                break;
+            }
+            // whitespace is not part of symbols.
+            if (in_array($cur, [" ", "\t"])) {
+                break;
+            }
+            $this->index++;
+        }
+        $length = $this->index - $start;
+        if ($length == 0) {
+            throw new ParserException("No symbol available $start:$length $cur", $this);
+        }
+        return substr($this->line, $start, $this->index - $start);
+    }
+
     public function getNextToken() {
         // Consume all whitespace before reading the next token.
         $this->consumeWhitespace();
 
         $start = $this->index;
 
-        $symbols = ["}"];
+        // TODO "}" should be handled differently?
+        $symbols = ["-", "_"];
         while($this->index < $this->length) {
             $cur = $this->line[$this->index];
             // alphanumeric chars are included in a token.
-            if (ctype_alpha($cur)) {
+            if (ctype_alnum($cur)) {
                 $this->index++;
                 continue;
             }
@@ -84,7 +119,7 @@ class Line {
         }
         $length = $this->index - $start;
         if ($length == 0) {
-            throw new ParserException("No token available for getNextToken()", $this);
+            throw new ParserException("No token available for getNextToken() $start:$length $cur", $this);
         }
         return substr($this->line, $start, $this->index - $start);
 

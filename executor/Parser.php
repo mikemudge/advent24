@@ -1,5 +1,6 @@
 <?php
 
+use expression\AndExpression;
 use expression\ArrayExpression;
 use expression\ArrayValue;
 use expression\BooleanExpression;
@@ -9,6 +10,7 @@ use expression\FloatValue;
 use expression\InExpression;
 use expression\IntValue;
 use expression\MathExpression;
+use expression\OrExpression;
 use expression\StringValue;
 use expression\VarExpression;
 use parser\Line;
@@ -17,19 +19,21 @@ use statement\ArrayAssignmentStatement;
 use statement\AssignmentStatement;
 use statement\BlockStatement;
 use statement\ConditionStatement;
+use statement\LoopControlStatement;
 use statement\LoopStatement;
 use statement\MethodInvocationStatement;
 
 class Parser {
 
     private array $stack;
-    /**
-     * @var ConditionStatement|mixed|null
-     */
     private BlockStatement $currentBlock;
+    private array $loopStack;
+    private ?BlockStatement $currentLoop;
 
     public function __construct() {
         $this->stack = [];
+        $this->loopStack = [];
+        $this->currentLoop = null;
     }
 
     public function parseLines($lines) {
@@ -54,30 +58,50 @@ class Parser {
     }
 
     public function parseStatement(Line $line) {
-        // Remove any semicolon from the end of the line.
-//        $line = trim($line,";");
+        $cur = $line->getCurrentChar();
+        if ($cur == "}") {
+            // End block
+            if ($this->currentBlock === $this->currentLoop) {
+                $this->currentLoop = array_pop($this->loopStack);
+            }
+            $this->currentBlock = array_pop($this->stack);
+            return;
+        }
 
+        // Otherwise read a token and decide what to do with it.
         $firstToken = $line->getNextToken();
-
-        switch ($firstToken) {
-            case '}':
-                // End block
-                $this->currentBlock = array_pop($this->stack);
-                return;
-            case 'while':
-                // loop stuff;
-                $condition = $this->parseBooleanExpression($line);
-                $this->nestedBlock(new LoopStatement($condition));
-                return;
-            case 'if':
-                // Conditional stuff.
-                $condition = $this->parseBooleanExpression($line);
-                $this->nestedBlock(new ConditionStatement($condition));
-                return;
-            default:
-                // Handle other statements.
-                $statement = $this->handleStatement($firstToken, $line);
-                $this->currentBlock->append($statement);
+        if ($firstToken == 'break') {
+            // exit the current loop
+            if (!$this->currentLoop) {
+                throw new ParserException("No loop to break from", $line);
+            }
+            $this->currentBlock->append(new LoopControlStatement("break"));
+        } else if ($firstToken == 'continue') {
+            if (!$this->currentLoop) {
+                throw new ParserException("No loop to continue", $line);
+            }
+            // exit the current loop
+            $this->currentBlock->append(new LoopControlStatement("continue"));
+        } else if ($firstToken == 'while') {
+            $condition = $this->parseBooleanExpression($line);
+            $this->nestedLoop(new LoopStatement($condition));
+        } else if ($firstToken == "for") {
+            // init must be an assignment?
+            $firstToken = $line->getNextToken();
+            $init = $this->handleStatement($firstToken, $line);
+            $line->expectChar(";");
+            $condition = $this->parseBooleanExpression($line);
+            $line->expectChar(";");
+            $firstToken = $line->getNextToken();
+            $loopStatement = $this->handleStatement($firstToken, $line);
+            $this->nestedLoop(new LoopStatement($condition, $init, $loopStatement));
+        } else if ($firstToken == "if") {
+            $condition = $this->parseBooleanExpression($line);
+            $this->nestedBlock(new ConditionStatement($condition));
+        } else {
+            // Handle other statements, like assignments or method calls?
+            $statement = $this->handleStatement($firstToken, $line);
+            $this->currentBlock->append($statement);
         }
     }
 
@@ -122,6 +146,18 @@ class Parser {
             $expression = $this->parseExpression($line);
             return new AssignmentStatement($firstToken, $expression);
         }
+        if ($next == "+") {
+            $var = new VarExpression($firstToken);
+            $symbol = $line->consumeSymbol();
+            if ($symbol == "++") {
+                $inc = new IntValue(1);
+            } else if ($symbol == "+=") {
+                $inc = $this->parseExpression($line);
+            } else {
+                throw new ParserException("Unknown symbol $symbol", $line);
+            }
+            return new AssignmentStatement($firstToken, new MathExpression($var, $inc, "+"));
+        }
 
         // Otherwise we need to check for method calls which are an expression.
         // Those handle things like referencing a method on an array or another target object.
@@ -131,20 +167,12 @@ class Parser {
     private function parseBooleanExpression(Line $line): BooleanExpression {
         $lhs = $this->parseExpression($line);
 
-        // TODO a boolean variable alone should be considered acceptable here too?
-
-        // TODO better reading for a comparator?
-        $compare = $line->getCurrentChar();
-        $line->consumeChar();
-        $compare2 = $line->getCurrentChar();
-        if ($compare2 == "=") {
-            // <= >= == !=
-            $compare .= $compare2;
-            $line->consumeChar();
+        if ($lhs instanceof BooleanExpression) {
+            return $lhs;
+        } else {
+            // parsed an expression which is not boolean in nature?
+            throw new ParserException("Expecting a boolean condition", $line);
         }
-
-        $rhs = $this->parseExpression($line);
-        return new BooleanExpression($lhs, $rhs, $compare);
     }
 
     private function parseExpression(Line $line): Expression {
@@ -155,6 +183,13 @@ class Parser {
         return $this->greedyExpression($target, $line);
     }
 
+    private function nestedLoop(LoopStatement $loop): void {
+        if ($this->currentLoop) {
+            $this->loopStack[] = $this->currentLoop;
+        }
+        $this->currentLoop = $loop;
+        $this->nestedBlock($loop);
+    }
     private function nestedBlock(BlockStatement $block): void {
         $this->currentBlock->append($block);
         // Put the current block aside as we want to build the new block now.
@@ -215,7 +250,7 @@ class Parser {
             return $expr;
         }
         $next = $line->getCurrentChar();
-        if ($next == ")" || $next == "]" || $next == ",") {
+        if (in_array($next, [")", "]", ",", ";", "{"])) {
             // method arguments or array index accesses end with these.
             // A nested call (x + 1) * 2 would also have the lhs end with the )
             // TODO need to handle starting a nested expression with (
@@ -232,6 +267,27 @@ class Parser {
             $line->consumeChar();
             $rhs = $this->parseExpression($line);
             $expr = new MathExpression($expr, $rhs, $next);
+        } else if (in_array($next, ["&", "|"])) {
+            if ($expr instanceof BooleanExpression) {
+                $symbol = $line->consumeSymbol();
+                $rhs = $this->parseBooleanExpression($line);
+                if ($symbol == "&&") {
+                    $expr = new AndExpression($expr, $rhs);
+                } else if ($symbol == "||") {
+                    $expr = new OrExpression($expr, $rhs);
+                } else {
+                    throw new ParserException("Unknown symbol $symbol", $line);
+                }
+            } else {
+                // Don't extend non boolean expressions.
+                // E.g (x > 0 && x < 10) will parse lhs = x and rhs = "0 && ..."
+                // If we return 0 for rhs then we have lhs = (x > 0) as a boolean so we can continue with &&
+                return $expr;
+            }
+        } else if (in_array($next, ["<", ">", "=", "!"])) {
+            $compare = $line->consumeSymbol();
+            $rhs = $this->parseExpression($line);
+            $expr = new BooleanExpression($expr, $rhs, $compare);
         } else {
             // No known continuations
             throw new ParserException("Not sure what to do with $next", $line);
@@ -244,7 +300,7 @@ class Parser {
     private function parseArguments(Line $line): array {
         $args = [];
         $cur = $line->getCurrentChar();
-        if ($cur == ")") {
+        if ($cur == ")" || $cur == "]") {
             return $args;
         }
 
@@ -253,9 +309,9 @@ class Parser {
             $line->consumeChar();
             $args[] = $this->parseExpression($line);
         }
-        // Should end with a )
-        if ($line->getCurrentChar() != ")") {
-            throw new ParserException("Unexpected $cur after method args, expecting , or )", $line);
+        // Should end with a ) or ]
+        if ($line->getCurrentChar() != ")" && $line->getCurrentChar() != "]") {
+            throw new ParserException("Unexpected $cur after method args, expecting , ] or )", $line);
         }
         $line->consumeChar();
         return $args;
@@ -275,9 +331,16 @@ class Parser {
             $line->consumeChar();
             return new StringValue($string);
         }
-        echo("parseValue got a $cur\n");
+        if ($cur == "[") {
+            // TODO support non empty array.
+            $line->consumeChar();
+            $values = $this->parseArguments($line);
+            // Consume the end ] as well.
+            $line->consumeChar();
+            return new ArrayValue($values);
+        }
         $firstToken = $line->getNextToken();
-        if (ctype_digit($cur)) {
+        if (ctype_digit($cur) || $cur == "-") {
             // Looks like a numeric value
             if (is_int($firstToken)) {
                 return new IntValue($firstToken);
@@ -288,6 +351,10 @@ class Parser {
 
         if ($firstToken == "true" || $firstToken == "false") {
             return new BooleanValue($firstToken == "true");
+        }
+
+        if ($line->isComplete()) {
+            return new VarExpression($firstToken);
         }
 
         // Handle method calls and array accesses.
@@ -301,6 +368,7 @@ class Parser {
             return new MethodInvocationStatement($targetObject, $methodName, $args);
         }
 
+        // Any other continuation symbol means that this value is complete as a var access.
         return new VarExpression($firstToken);
     }
 

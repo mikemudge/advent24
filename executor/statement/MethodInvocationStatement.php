@@ -77,10 +77,13 @@ class MethodInvocationStatement extends Statement implements Expression {
             $array[] = $evaluatedArgs[0];
             return $array;
         }
+        if ($this->methodName == "join") {
+            // A catch all which will call any php function
+            $obj = &$this->targetObject->calculate($context);
+            return join($evaluatedArgs[0], $obj);
+        }
 
-        // A catch all which will call any php function
-        $obj = &$this->targetObject->calculate($context);
-        return call_user_func([$obj, $this->methodName]);
+        throw new \RuntimeException("Unknown method $this->methodName");
     }
 
     public function __toString(): string {

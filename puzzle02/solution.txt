@@ -1,53 +1,51 @@
 
 String[] data = readfile("puzzle02/input")
 
-int i = 0;
 int part1 = 0;
 int part2 = 0
-while i < count(data) {
+for int i = 0; i < count(data); i++ {
   string s = data[i];
   array v = s.split(" ");
   int fail = 0;
   int increase = 0;
-  diff = v[1] - v[0];
+  diff = v[count(v) - 1] - v[0];
   if diff > 0 {
     increase = 1
   }
   if diff < 0 {
     increase = -1
   }
-  int ii = 1;
+  if i < 10 {
+    print(v.join(","));
+  }
   last = v[0];
-  while ii < count(v) {
-    diff = v[ii] - last;
+  for int ii = 1; ii < count(v); ii++ {
+    diff = v[ii] - last
     prev = v[ii];
+    String failReason = "Success";
     if diff > 0 && diff < 4 && increase == -1 {
-      print(i, ii, diff, "not-decreasing");
+      failReason = "not-decreasing");
       fail = fail + 1
       if ii != 1 {
         prev = last
       }
     }
-    if diff < 0 {
-      if diff > -4 {
-        if increase == 1 {
-          print(i, ii, diff, "not-increasing");
-          fail = fail + 1
-          if ii != 1 {
-            prev = last
-          }
-        }
+    if diff < 0 && diff > -4 && increase == 1 {
+      failReason = "not-increasing";
+      fail = fail + 1
+      if ii != 1 {
+        prev = last
       }
     }
     if diff == 0 {
-      print(i, ii, "ZeroDiff")
+      failReason = "ZeroDiff"
       fail = fail + 1
       if ii != 1 {
         prev = last
       }
     }
     if abs(diff) > 3 {
-      print(i, ii, diff, "LargeDiff")
+      failReason = "LargeDiff"
       fail = fail + 1
       if ii != 1 {
         prev = last
@@ -55,11 +53,9 @@ while i < count(data) {
     }
     # update the last to be the previous value.
     last = prev
-    if fail >= 2 {
-      # Skip to the end of this loop
-      ii = count(v)
+    if i < 10 && failReason != "Success" {
+      print("Line", i, "values", v[ii - 1], v[ii], "diff", diff, failReason);
     }
-    ii = ii + 1
   }
   if fail == 0 {
     #print(i, "Success")
@@ -68,10 +64,8 @@ while i < count(data) {
   if fail < 2 {
     part2 = part2 + 1
   }
-  print(i, fail, part1, part2)
-  i = i + 1;
-  if i > 10 {
-    i = 1000
+  if i < 10 {
+    print(i, fail, part1, part2)
   }
 }
 

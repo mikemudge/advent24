@@ -7,15 +7,26 @@ use ProgramContext;
 
 class LoopStatement extends BlockStatement {
     private BooleanExpression $condition;
+    private ?Statement $init;
+    private ?Statement $loop;
 
-    public function __construct(BooleanExpression $condition) {
+    public function __construct(BooleanExpression $condition, ?Statement $initStatement = null, ?Statement $loopStatement = null) {
         parent::__construct();
         $this->condition = $condition;
+        $this->init = $initStatement;
+        $this->loop = $loopStatement;
     }
 
     public function execute(ProgramContext $context) {
+        $this->init?->execute($context);
         while($this->condition->calculate($context) === Expression::TRUE) {
             parent::execute($context);
+            $control = $context->getAndResetControl();
+            if ($control && $control->getType() == "break") {
+                // exit the loop now
+                break;
+            }
+            $this->loop?->execute($context);
         }
     }
 

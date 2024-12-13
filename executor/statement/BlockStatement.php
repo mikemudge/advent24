@@ -15,9 +15,11 @@ class BlockStatement extends Statement {
 
     public function execute(ProgramContext $context) {
         foreach($this->statements as $statement) {
-            // TODO need to support break/continue type statements?
             try {
                 $statement->execute($context);
+                if ($context->checkControl()) {
+                    return;
+                }
             } catch (Throwable $e) {
                 echo "Error: $statement\n";
                 throw $e;
