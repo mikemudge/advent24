@@ -122,6 +122,11 @@ class Grid {
         $this->oobValue = new GridLocation($this, PHP_INT_MIN, PHP_INT_MIN, null);
     }
 
+    public static function create(int $width, int $height): Grid {
+        $str = str_repeat(".", $width);
+        return new Grid(array_fill(0, $height, $str));
+    }
+
     public function getWidth(): int {
         return $this->width;
     }
