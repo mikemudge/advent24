@@ -19,7 +19,7 @@ class GridLocation {
         $this->data = $data;
     }
 
-    public function getData() {
+    public function &getData() {
         return $this->data;
     }
 
@@ -168,6 +168,19 @@ class Grid {
         for ($y = 0; $y < $this->height; $y++) {
             for ($x = 0; $x < $this->width; $x++) {
                 if ($this->data[$y][$x]->getKey() == $string) {
+                    $cnt++;
+                }
+            }
+        }
+        return $cnt;
+    }
+
+    public function countData(callable $fn) {
+        $cnt = 0;
+        for ($y = 0; $y < $this->height; $y++) {
+            for ($x = 0; $x < $this->width; $x++) {
+                $data = $this->data[$y][$x]->getData();
+                if ($fn($data)) {
                     $cnt++;
                 }
             }
