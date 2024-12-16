@@ -180,6 +180,16 @@ class Grid {
         return $cnt;
     }
 
+    public function sum(callable $fn): int {
+        $cnt = 0;
+        for ($y = 0; $y < $this->height; $y++) {
+            for ($x = 0; $x < $this->width; $x++) {
+                $cnt += call_user_func($fn, $this->data[$y][$x]);
+            }
+        }
+        return $cnt;
+    }
+
     public function countData(callable $fn) {
         $cnt = 0;
         for ($y = 0; $y < $this->height; $y++) {
