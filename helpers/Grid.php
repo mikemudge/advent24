@@ -97,6 +97,10 @@ class GridLocation {
     public function getY(): int {
         return $this->y;
     }
+
+    public function getManhattenDistance(?GridLocation $loc2): int {
+        return abs($loc2->getX() - $this->getX()) + abs($loc2->getY() - $this->getY());
+    }
 }
 
 class Grid {
@@ -209,7 +213,7 @@ class Grid {
             for ($x = 0; $x < $this->width; $x++) {
                 $keys[] = $this->data[$y][$x]->getKey();
             }
-            echo(join($keys) . "\n");
+            echo(str_pad($y, 5) . join($keys) . "\n");
         }
     }
 
@@ -229,5 +233,36 @@ class Grid {
                 $fun($this->get($x, $y));
             }
         }
+    }
+
+    public function solveMaze(?GridLocation $start, ?GridLocation $end) {
+        // Set the distance to end in each data.
+        $end->setData(0);
+        $current = $end->getAdjacent();
+        $distance = 0;
+        while ($current) {
+            $next = [];
+            $distance++;
+            foreach($current as $loc) {
+                if (!$loc->getKey()) {
+                    // Out of bounds.
+                    continue;
+                }
+                if ($loc->getKey() == '#') {
+                    continue;
+                }
+                if ($loc->getData() !== null) {
+                    // Already visited;
+                    continue;
+                }
+                $loc->setData($distance);
+                $next[] = $loc->north();
+                $next[] = $loc->east();
+                $next[] = $loc->south();
+                $next[] = $loc->west();
+            }
+            $current = $next;
+        }
+        return $start->getData();
     }
 }
