@@ -35,6 +35,7 @@ class GraphNode {
 }
 
 class Graph {
+    /** @var GraphNode[] */
     private array $nodes;
 
     public function __construct() {
